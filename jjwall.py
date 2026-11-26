@@ -18,9 +18,8 @@ jjwall.py — 掘金壁纸 · 独立版
 
 服务端没有 CORS 头，所以必须由本程序代理，浏览器不能直接调。
 
-用法：
-    pip install requests pycryptodome
-    python jjwall.py            # 默认 8700
+用法（零依赖，Python 3.7+ 直接跑）：
+    python3 jjwall.py           # 默认 8700
     python jjwall.py 9000       # 自定义端口
 
 然后手机/电脑浏览器打开 http://127.0.0.1:8700
@@ -37,10 +36,8 @@ import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-try:
-    import requests
-except ImportError:
-    sys.exit("缺 requests：pip install requests")
+import urllib.request
+import urllib.error
 
 
 
@@ -271,13 +268,22 @@ def aes_decrypt(b64, iv):
 
 # ---------------------------------------------------------------- 客户端
 
-_session = requests.Session()
-_session.headers.update({
+_HEADERS = {
     "User-Agent": UA,
     "Referer": CDN,
     "Accept": "application/json, text/plain, */*",
-})
-_lock = threading.Lock()
+    "Accept-Encoding": "identity",
+}
+
+
+def http_get(url, timeout=25):
+    """零依赖 GET，返回 (status, text)。"""
+    req = urllib.request.Request(url, headers=_HEADERS)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return r.getcode(), r.read().decode("utf-8", "ignore")
+    except urllib.error.HTTPError as e:
+        return e.code, e.read().decode("utf-8", "ignore")
 
 
 def api(name_or_path, payload=None, timeout=20):
@@ -293,10 +299,11 @@ def api(name_or_path, payload=None, timeout=20):
     body.setdefault("scene", 1001)
 
     iv = rand_iv()
-    params = {"requestData": aes_encrypt(body, iv), "iv": iv}
-    r = _session.get(HOST + path, params=params, timeout=timeout)
-    r.raise_for_status()
-    j = r.json()
+    qs = urllib.parse.urlencode({"requestData": aes_encrypt(body, iv), "iv": iv})
+    status, text = http_get(HOST + path + "?" + qs, timeout=timeout)
+    if status != 200:
+        raise IOError("上游 HTTP %d：%s" % (status, text[:200]))
+    j = json.loads(text)
 
     d = j.get("data")
     if isinstance(d, dict) and d.get("iv") and d.get("data"):
@@ -672,7 +679,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
 
             self._send(404, json.dumps({"error": "not found"}), )
-        except requests.HTTPError as e:
+        except urllib.error.HTTPError as e:
             self._json({"error": "upstream " + str(e)}, 502)
         except Exception as e:
             self._json({"error": "%s: %s" % (type(e).__name__, e)}, 500)

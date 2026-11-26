@@ -32,14 +32,13 @@
 ```bash
 pkg update -y
 pkg install python -y
-pip install requests
 curl -L -o jjwall.py https://raw.githubusercontent.com/qiuchen520/jjwall/main/jjwall.py
 python jjwall.py
 ```
 
 手机浏览器打开 `http://127.0.0.1:8700`
 
-不需要 pycryptodome，AES 是纯 Python 实现的。
+零依赖：只需要 python3 本身，AES 是纯 Python 实现的。
 
 ## 接口
 
